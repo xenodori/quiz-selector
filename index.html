@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>구매대행 학습 루트 추천</title>
+  <style>
+    :root{
+      --bg:#0b0b0e; --card:#121219; --muted:#9ea3af; --text:#f5f7fa;
+      --accent:#67e8f9; --accent2:#22c55e; --ring:rgba(103,232,249,.3);
+      --shadow:0 8px 30px rgba(0,0,0,.35); --radius:18px;
+    }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 600px at 80% -10%, #133, transparent),
+                 radial-gradient(900px 500px at -10% 110%, #143, transparent), var(--bg);
+      color:var(--text); font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Apple SD Gothic Neo, Helvetica, Arial, "맑은 고딕", "Malgun Gothic", sans-serif;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    .app{width:100%; max-width:760px}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      backdrop-filter:saturate(120%) blur(6px);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:var(--radius); box-shadow:var(--shadow); padding:28px;
+    }
+    .pill{display:inline-flex;align-items:center;gap:8px;background:rgba(103,232,249,.12);
+      border:1px solid var(--ring);color:#d1fdff;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700}
+    .title{font-size:28px;font-weight:800;letter-spacing:-.3px;margin:8px 0 6px}
+    .desc{margin:0 0 18px;color:var(--muted);line-height:1.5}
+    .progress{height:6px;background:#1e1e28;border-radius:999px;overflow:hidden;margin:12px 0 22px}
+    .bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#93c5fd);transition:width .35s ease}
+    .opts{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+    .opt{
+      border:1px solid rgba(255,255,255,.08);background:var(--card);color:var(--text);
+      padding:16px 14px;border-radius:14px;text-align:center;cursor:pointer;
+      font-weight:700;letter-spacing:-.2px;transition:transform .1s ease,box-shadow .2s ease,border-color .2s ease;outline:none;
+    }
+    .opt:hover,.opt:focus{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.35);border-color:var(--ring)}
+    .row-1{grid-template-columns:1fr}
+    .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+    .btn{border:none;border-radius:12px;padding:12px 16px;font-weight:800;cursor:pointer;background:#2a2a36;color:var(--text)}
+    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.12)}
+    .btn-cta{background:var(--accent2);color:#00110a;text-decoration:none;display:inline-block}
+    .result{display:grid;gap:12px;grid-template-columns:1fr;margin-top:10px}
+    .result .headline{font-size:22px;font-weight:900;margin:.2rem 0}
+    .result p{margin:.2rem 0 .6rem;color:var(--muted);line-height:1.6}
+    .path{margin-top:8px;padding:10px 12px;border-radius:12px;background:#0f1320;border:1px dashed rgba(255,255,255,.12);color:#cbd5e1;font-size:13px}
+    .small{font-size:12px;color:#9aa0aa}
+    @media (max-width:640px){.opts{grid-template-columns:1fr}.title{font-size:24px}}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="card" aria-live="polite">
+      <div class="pill">🧭 내게 맞는 구매대행 학습 루트</div>
+      <h1 class="title" id="qTitle">구매대행 경험이 있나요?</h1>
+      <p class="desc" id="qDesc">3~5문항에 답하면 맞춤 추천과 자료 링크가 제공됩니다.</p>
+
+      <div class="progress" aria-hidden="true"><div class="bar" id="bar"></div></div>
+
+      <div id="options" class="opts"></div>
+
+      <div class="actions">
+        <button class="btn btn-ghost" id="backBtn" disabled>← 이전</button>
+        <button class="btn" id="restartBtn">처음부터</button>
+      </div>
+
+      <div id="result" class="result" hidden></div>
+      <div id="path" class="path small" hidden></div>
+    </section>
+  </main>
+
+  <script>
+    // ========== 1) 트리 정의 (제노님 요구사항 반영) ==========
+    const TREE = {
+      start: "q_exp",
+      nodes: {
+        // 첫 질문: 경험 유무
+        q_exp: {
+          title: "구매대행 경험이 있나요?",
+          desc: "",
+          options: [
+            { label: "있다", next: "q_mode" },
+            { label: "없다", next: "q_noexp_state" }
+          ]
+        },
+        // 경험 있다 → 수동/반자동
+        q_mode: {
+          title: "현재 운영 방식은 무엇인가요?",
+          desc: "",
+          options: [
+            { label: "수동", next: "q_term" },
+            { label: "반자동", next: "q_term" }
+          ]
+        },
+        // 수동/반자동 공통 → 기간
+        q_term: {
+          title: "운영 기간은 얼마나 되었나요?",
+          desc: "",
+          options: [
+            { label: "6개월 이하", result: "seller_maker" },
+            { label: "6개월 이상", result: "vod_advanced" }
+          ]
+        },
+        // 경험 없다 → 관심만 있다/시작할 예정이다
+        q_noexp_state: {
+          title: "현재 상태를 알려주세요.",
+          desc: "",
+          options: [
+            { label: "관심만 있다", result: "book_reco" },
+            { label: "시작할 예정이다", next: "q_start_plan" }
+          ]
+        },
+        // 시작할 예정이다 → 혼자서/어렵다
+        q_start_plan: {
+          title: "어떻게 진행하고 싶나요?",
+          desc: "",
+          options: [
+            { label: "혼자서 할래요", result: "vod_basic" },
+            { label: "혼자서는 어려워요", result: "seller_maker" }
+          ]
+        }
+      }
+    };
+
+    // ========== 2) 결과 카드 ========== 
+    const RESULTS = {
+      seller_maker: {
+        title: "추천: 셀러메이커 (실습 루틴 프로그램)",
+        body: "주차별 실습·상세페이지 피드백·검색노출 체크리스트·전문 코치들과 ‘첫 매출’을 가장 빠르게 만듭니다.",
+        ctas: [
+          { label: "셀러메이커 자세히 보기", href: "https://cafe.naver.com/travelceo/57125" }
+        ]
+      },
+      vod_advanced: {
+        title: "추천: 심화 강의",
+        body: "6개월 이상 운영자라면 ‘검색되는 상세페이지, 카탈로그/옵션/가격 전략’으로 판매를 극대화 하고 마진을 높여보세요.",
+        ctas: [
+          { label: "심화 강의 바로가기", href: "https://www.travelceo.co.kr/cu/kfdX2USD" }
+        ]
+      },
+      book_reco: {
+        title: "추천: 구매대행 책",
+        body: "관심 단계에선 개념을 한번에 잡는 게 최우선입니다. 흐름(소싱→등록→노출→판매→대응)을 책으로 빠르게 익히세요.",
+        ctas: [
+          { label: "도서 안내 보기", href: "https://search.shopping.naver.com/book/catalog/51231446621" }
+        ]
+      },
+      vod_basic: {
+        title: "추천: 기초 VOD 강의",
+        body: "혼자 시작할 분들을 위해 핵심 개념과 실습 동선을 완벽하게 정리했습니다.",
+        ctas: [
+          { label: "기초 VOD 보러가기", href: "https://www.travelceo.co.kr/cu/2xRPDZMk" }
+        ]
+      }
+    };
+
+    // ========== 3) 상태/렌더러 ==========
+    const $title = document.getElementById("qTitle");
+    const $desc = document.getElementById("qDesc");
+    const $opts = document.getElementById("options");
+    const $bar = document.getElementById("bar");
+    const $result = document.getElementById("result");
+    const $path = document.getElementById("path");
+    const $back = document.getElementById("backBtn");
+    const $restart = document.getElementById("restartBtn");
+
+    // 스택: 질문 ID 순서
+    const questionStack = [];
+    // 선택 기록(라벨만)
+    const picks = [];
+
+    function setProgress(){
+      // 대략 3~4 스텝 → 0~100%
+      const maxSteps = 4;
+      const pct = Math.min(100, Math.round((Math.max(1, questionStack.length) / maxSteps) * 100));
+      $bar.style.width = pct + "%";
+    }
+
+    function updatePath(){
+      const crumbs = picks.join(" → ");
+      if(crumbs){
+        $path.hidden = false;
+        $path.textContent = "선택 경로: " + crumbs;
+      }else{
+        $path.hidden = true;
+        $path.textContent = "";
+      }
+    }
+
+    function renderQuestion(qid){
+      const node = TREE.nodes[qid];
+      if(!node) return;
+
+      if(questionStack[questionStack.length - 1] !== qid){
+        questionStack.push(qid);
+      }
+
+      $result.hidden = true;
+      $opts.innerHTML = "";
+      $title.textContent = node.title;
+      $desc.textContent = node.desc || "";
+      $opts.classList.toggle("row-1", node.options.length === 1);
+
+      node.options.forEach((opt, idx) => {
+        const b = document.createElement("button");
+        b.className = "opt";
+        b.textContent = opt.label;
+        b.addEventListener("click", () => handlePick(opt));
+        $opts.appendChild(b);
+        if(idx===0) b.focus();
+      });
+
+      $back.disabled = questionStack.length <= 1 && picks.length === 0;
+      setProgress();
+      updatePath();
+    }
+
+    function showResult(key){
+      const r = RESULTS[key];
+      if(!r) return;
+
+      $title.textContent = "맞춤 결과";
+      $desc.textContent = "아래 추천을 확인하세요.";
+      $opts.innerHTML = "";
+      $result.hidden = false;
+      $result.innerHTML = `
+        <div class="headline">✅ ${r.title}</div>
+        <p>${r.body}</p>
+      `;
+
+      const btnWrap = document.createElement("div");
+      btnWrap.className = "actions";
+      r.ctas.forEach(cta => {
+        const a = document.createElement("a");
+        a.href = cta.href;
+        a.target = "_blank"; a.rel = "noopener";
+        a.className = "btn btn-cta";
+        a.textContent = cta.label;
+        btnWrap.appendChild(a);
+      });
+      $result.appendChild(btnWrap);
+
+      // 결과는 진행률 100%
+      $bar.style.width = "100%";
+      $back.disabled = questionStack.length === 0;
+      updatePath();
+    }
+
+    function handlePick(opt){
+      picks.push(opt.label);
+
+      if(opt.result){
+        showResult(opt.result);
+      } else if(opt.next){
+        renderQuestion(opt.next);
+      }
+      updatePath();
+    }
+
+    // ========== 4) 뒤로가기 / 처음부터 ==========
+    $back.addEventListener("click", () => {
+      // 결과 화면이던 질문 화면이던 공통 처리: 마지막 선택 제거
+      if(picks.length > 0) picks.pop();
+      // 현재 질문 pop (또는 결과에서 이전 질문으로)
+      if(questionStack.length > 1){
+        questionStack.pop();
+        const prevQ = questionStack[questionStack.length - 1];
+        renderQuestion(prevQ);
+      }else{
+        // 시작으로
+        resetAll();
+      }
+      updatePath();
+    });
+
+    function resetAll(){
+      questionStack.length = 0;
+      picks.length = 0;
+      $result.hidden = true;
+      $path.hidden = true;
+      renderQuestion(TREE.start);
+      $bar.style.width = "0%";
+    }
+
+    $restart.addEventListener("click", resetAll);
+
+    // 초기 시작
+    resetAll();
+
+    // 접근성: ESC로 리셋
+    document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") resetAll(); });
+  </script>
+</body>
+</html>
